@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
     <title>Учет рабочего времени</title>
+    <!-- Подключаем Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js"></script>
     <style>
         * {
             margin: 0;
@@ -933,24 +936,394 @@
     </div>
 
     <script>
-        // Константа с паролем администратора
-        const ADMIN_PASSWORD = '4815162342';
-        
-        // Загружаем данные из localStorage
-        let shifts = JSON.parse(localStorage.getItem('shifts')) || [];
-        let employees = JSON.parse(localStorage.getItem('employees')) || [
-            { name: "Иван Петров", password: "1234" },
-            { name: "Елена Сидорова", password: "5678" },
-            { name: "Алексей Иванов", password: "9012" }
-        ];
-        
+        // ============================================
+        // ВСТАВЬТЕ СВОИ ДАННЫЕ ИЗ FIREBASE СЮДА!
+        // ============================================
+        const firebaseConfig = {
+            apiKey: "AIzaSyBJUQqeGHw5f8-oQVp7bmjSNiWFlGlOx8I",        // Вставьте сюда свой apiKey
+            authDomain: "myproject-f6b24.firebaseapp.com", // Вставьте свой authDomain
+            projectId: "myproject-f6b24",    // Вставьте свой projectId
+            storageBucket: "myproject-f6b24.firebasestorage.app", // Вставьте свой storageBucket
+            messagingSenderId: "258321607885", // Вставьте свой messagingSenderId
+            appId: "1:258321607885:web:c51f2d4ae2c4ad0f500d84" // Вставьте свой appId
+        };
+
+        // Инициализация Firebase
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+
+        // Глобальные переменные
+        let employees = [];
+        let shifts = [];
         let currentEmployee = null;
         let isAdminAuthorized = false;
 
+        // Проверяем сессию админа
         if (sessionStorage.getItem('adminAuthorized') === 'true') {
             isAdminAuthorized = true;
             updateAdminUI();
         }
+
+        // ============================================
+        // ФУНКЦИИ ДЛЯ РАБОТЫ С FIREBASE
+        // ============================================
+
+        // Загрузка данных из Firebase
+        async function loadData() {
+            try {
+                // Загружаем сотрудников
+                const employeesSnapshot = await db.collection('employees').get();
+                employees = [];
+                employeesSnapshot.forEach(doc => {
+                    employees.push({ id: doc.id, ...doc.data() });
+                });
+                
+                // Если нет сотрудников, создаем тестовых
+                if (employees.length === 0) {
+                    const testEmployees = [
+                        { name: "Иван Петров", password: "1234" },
+                        { name: "Елена Сидорова", password: "5678" },
+                        { name: "Алексей Иванов", password: "9012" }
+                    ];
+                    
+                    for (let emp of testEmployees) {
+                        const docRef = await db.collection('employees').add(emp);
+                        employees.push({ id: docRef.id, ...emp });
+                    }
+                }
+
+                // Загружаем смены
+                const shiftsSnapshot = await db.collection('shifts').get();
+                shifts = [];
+                shiftsSnapshot.forEach(doc => {
+                    shifts.push({ id: doc.id, ...doc.data() });
+                });
+
+                // Обновляем интерфейс
+                updateEmployeeSelects();
+                
+                if (isAdminAuthorized) {
+                    renderEmployeeList();
+                    loadAdminShifts();
+                }
+                
+                console.log("Данные загружены из Firebase");
+            } catch (error) {
+                console.error("Ошибка загрузки из Firebase:", error);
+                alert("Ошибка подключения к базе данных. Проверьте интернет и настройки Firebase.");
+            }
+        }
+
+        // Сохранение новой смены
+        async function saveShift() {
+            if (!isAdminAuthorized) {
+                alert('Только администратор может сохранять смены!');
+                showPasswordModal();
+                return;
+            }
+
+            // Получаем данные из формы
+            const employee = document.getElementById('employeeSelect').value;
+            const date = document.getElementById('shiftDate').value;
+            const startTime = document.getElementById('startTime').value;
+            const endTime = document.getElementById('endTime').value;
+            const hourlyRate = parseFloat(document.getElementById('hourlyRate').value);
+            
+            const taxi = parseFloat(document.getElementById('taxi').value) || 0;
+            const otherAllowances = parseFloat(document.getElementById('otherAllowances').value) || 0;
+            const fines = parseFloat(document.getElementById('fines').value) || 0;
+            const deductions = parseFloat(document.getElementById('deductions').value) || 0;
+            const meals = parseFloat(document.getElementById('meals').value) || 0;
+            const comment = document.getElementById('shiftComment').value;
+
+            if (!date) {
+                alert('Пожалуйста, выберите дату');
+                return;
+            }
+
+            // Рассчитываем часы
+            const start = new Date(`2000-01-01T${startTime}`);
+            const end = new Date(`2000-01-01T${endTime}`);
+            const hoursWorked = (end - start) / (1000 * 60 * 60);
+
+            if (hoursWorked <= 0) {
+                alert('Время ухода должно быть позже времени прихода');
+                return;
+            }
+
+            // Рассчитываем деньги
+            const baseEarnings = hoursWorked * hourlyRate;
+            const totalAllowances = taxi + otherAllowances;
+            const totalDeductions = fines + deductions + meals;
+            const finalEarnings = baseEarnings + totalAllowances - totalDeductions;
+
+            // Создаем объект смены
+            const shift = {
+                employee,
+                date,
+                startTime,
+                endTime,
+                hoursWorked: hoursWorked.toFixed(2),
+                hourlyRate,
+                taxi,
+                otherAllowances,
+                fines,
+                deductions,
+                meals,
+                comment: comment || '',
+                totalAllowances: totalAllowances.toFixed(2),
+                totalDeductions: totalDeductions.toFixed(2),
+                baseEarnings: baseEarnings.toFixed(2),
+                finalEarnings: finalEarnings.toFixed(2),
+                createdAt: new Date().toISOString()
+            };
+
+            try {
+                // Сохраняем в Firebase
+                const docRef = await db.collection('shifts').add(shift);
+                shift.id = docRef.id;
+                shifts.push(shift);
+                
+                alert('Смена успешно сохранена!');
+                
+                // Очищаем форму
+                document.getElementById('shiftDate').value = '';
+                document.getElementById('taxi').value = '0';
+                document.getElementById('otherAllowances').value = '0';
+                document.getElementById('fines').value = '0';
+                document.getElementById('deductions').value = '0';
+                document.getElementById('meals').value = '0';
+                document.getElementById('shiftComment').value = '';
+                
+                // Обновляем список смен
+                loadAdminShifts();
+                
+            } catch (error) {
+                console.error("Ошибка сохранения в Firebase:", error);
+                alert("Ошибка при сохранении. Попробуйте снова.");
+            }
+        }
+
+        // Обновление смены
+        async function updateShift() {
+            const id = document.getElementById('editShiftId').value;
+            const index = shifts.findIndex(s => s.id === id);
+            
+            if (index === -1) return;
+
+            // Получаем данные из формы редактирования
+            const employee = document.getElementById('editEmployeeSelect').value;
+            const date = document.getElementById('editShiftDate').value;
+            const startTime = document.getElementById('editStartTime').value;
+            const endTime = document.getElementById('editEndTime').value;
+            const hourlyRate = parseFloat(document.getElementById('editHourlyRate').value);
+            const taxi = parseFloat(document.getElementById('editTaxi').value) || 0;
+            const otherAllowances = parseFloat(document.getElementById('editOtherAllowances').value) || 0;
+            const fines = parseFloat(document.getElementById('editFines').value) || 0;
+            const deductions = parseFloat(document.getElementById('editDeductions').value) || 0;
+            const meals = parseFloat(document.getElementById('editMeals').value) || 0;
+            const comment = document.getElementById('editComment').value;
+
+            if (!date) {
+                alert('Пожалуйста, выберите дату');
+                return;
+            }
+
+            // Рассчитываем часы
+            const start = new Date(`2000-01-01T${startTime}`);
+            const end = new Date(`2000-01-01T${endTime}`);
+            const hoursWorked = (end - start) / (1000 * 60 * 60);
+
+            if (hoursWorked <= 0) {
+                alert('Время ухода должно быть позже времени прихода');
+                return;
+            }
+
+            // Рассчитываем деньги
+            const baseEarnings = hoursWorked * hourlyRate;
+            const totalAllowances = taxi + otherAllowances;
+            const totalDeductions = fines + deductions + meals;
+            const finalEarnings = baseEarnings + totalAllowances - totalDeductions;
+
+            const updatedShift = {
+                employee,
+                date,
+                startTime,
+                endTime,
+                hoursWorked: hoursWorked.toFixed(2),
+                hourlyRate,
+                taxi,
+                otherAllowances,
+                fines,
+                deductions,
+                meals,
+                comment: comment || '',
+                totalAllowances: totalAllowances.toFixed(2),
+                totalDeductions: totalDeductions.toFixed(2),
+                baseEarnings: baseEarnings.toFixed(2),
+                finalEarnings: finalEarnings.toFixed(2)
+            };
+
+            try {
+                // Обновляем в Firebase
+                await db.collection('shifts').doc(id).update(updatedShift);
+                
+                // Обновляем в локальном массиве
+                shifts[index] = { ...updatedShift, id };
+                
+                alert('Смена успешно обновлена!');
+                closeEditModal();
+                loadAdminShifts();
+                
+                if (currentEmployee) {
+                    loadEmployeeShifts();
+                }
+            } catch (error) {
+                console.error("Ошибка обновления в Firebase:", error);
+                alert("Ошибка при обновлении. Попробуйте снова.");
+            }
+        }
+
+        // Удаление смены
+        async function deleteShift() {
+            if (!confirm('Вы уверены, что хотите удалить эту смену?')) return;
+            
+            const id = document.getElementById('editShiftId').value;
+            
+            try {
+                // Удаляем из Firebase
+                await db.collection('shifts').doc(id).delete();
+                
+                // Удаляем из локального массива
+                shifts = shifts.filter(s => s.id !== id);
+                
+                alert('Смена удалена');
+                closeEditModal();
+                loadAdminShifts();
+                
+                if (currentEmployee) {
+                    loadEmployeeShifts();
+                }
+            } catch (error) {
+                console.error("Ошибка удаления из Firebase:", error);
+                alert("Ошибка при удалении. Попробуйте снова.");
+            }
+        }
+
+        // Добавление нового сотрудника
+        async function addNewEmployee() {
+            const newName = prompt('Введите имя нового сотрудника:');
+            if (newName && newName.trim()) {
+                const newPassword = Math.floor(1000 + Math.random() * 9000).toString();
+                const newEmployee = { name: newName.trim(), password: newPassword };
+                
+                try {
+                    // Сохраняем в Firebase
+                    const docRef = await db.collection('employees').add(newEmployee);
+                    employees.push({ id: docRef.id, ...newEmployee });
+                    
+                    updateEmployeeSelects();
+                    renderEmployeeList();
+                    alert(`Пароль для сотрудника: ${newPassword}`);
+                } catch (error) {
+                    console.error("Ошибка добавления сотрудника:", error);
+                    alert("Ошибка при добавлении сотрудника");
+                }
+            }
+        }
+
+        // Обновление имени сотрудника
+        async function updateEmployeeName(index, newName) {
+            const oldName = employees[index].name;
+            const employeeId = employees[index].id;
+            
+            if (newName && newName.trim()) {
+                try {
+                    // Обновляем имя сотрудника в Firebase
+                    if (employeeId) {
+                        await db.collection('employees').doc(employeeId).update({ name: newName.trim() });
+                    }
+                    
+                    employees[index].name = newName.trim();
+                    
+                    // Обновляем имя во всех сменах этого сотрудника
+                    const shiftsToUpdate = shifts.filter(s => s.employee === oldName);
+                    for (let shift of shiftsToUpdate) {
+                        if (shift.id) {
+                            await db.collection('shifts').doc(shift.id).update({ employee: newName.trim() });
+                            shift.employee = newName.trim();
+                        }
+                    }
+                    
+                    updateEmployeeSelects();
+                    renderEmployeeList();
+                    loadAdminShifts();
+                } catch (error) {
+                    console.error("Ошибка обновления имени:", error);
+                    alert("Ошибка при обновлении имени");
+                }
+            }
+        }
+
+        // Обновление пароля сотрудника
+        async function updateEmployeePassword(index, newPassword) {
+            if (newPassword && newPassword.trim()) {
+                const employeeId = employees[index].id;
+                try {
+                    if (employeeId) {
+                        await db.collection('employees').doc(employeeId).update({ password: newPassword.trim() });
+                    }
+                    employees[index].password = newPassword.trim();
+                    renderEmployeeList();
+                } catch (error) {
+                    console.error("Ошибка обновления пароля:", error);
+                    alert("Ошибка при обновлении пароля");
+                }
+            }
+        }
+
+        // Удаление сотрудника
+        async function deleteEmployee(index) {
+            if (employees.length <= 1) {
+                alert('Должен быть хотя бы один сотрудник');
+                return;
+            }
+            
+            const employeeName = employees[index].name;
+            const employeeId = employees[index].id;
+            
+            if (confirm(`Удалить сотрудника ${employeeName}? Все его смены также будут удалены.`)) {
+                try {
+                    // Удаляем сотрудника из Firebase
+                    if (employeeId) {
+                        await db.collection('employees').doc(employeeId).delete();
+                    }
+                    
+                    // Удаляем все смены этого сотрудника из Firebase
+                    const shiftsToDelete = shifts.filter(s => s.employee === employeeName);
+                    for (let shift of shiftsToDelete) {
+                        if (shift.id) {
+                            await db.collection('shifts').doc(shift.id).delete();
+                        }
+                    }
+                    
+                    // Удаляем из локальных массивов
+                    employees.splice(index, 1);
+                    shifts = shifts.filter(shift => shift.employee !== employeeName);
+                    
+                    updateEmployeeSelects();
+                    renderEmployeeList();
+                    loadAdminShifts();
+                } catch (error) {
+                    console.error("Ошибка удаления сотрудника:", error);
+                    alert("Ошибка при удалении сотрудника");
+                }
+            }
+        }
+
+        // ============================================
+        // ФУНКЦИИ ДЛЯ ОТОБРАЖЕНИЯ (БЕЗ ИЗМЕНЕНИЙ)
+        // ============================================
 
         // Функции для модальных окон
         function showPasswordModal() {
@@ -981,7 +1354,7 @@
         function checkAdminPassword() {
             const enteredPassword = document.getElementById('adminPasswordInput').value;
             
-            if (enteredPassword === ADMIN_PASSWORD) {
+            if (enteredPassword === '4815162342') {
                 isAdminAuthorized = true;
                 sessionStorage.setItem('adminAuthorized', 'true');
                 hideAdminPasswordModal();
@@ -1143,148 +1516,10 @@
             `).join('');
         }
 
-        function addNewEmployee() {
-            const newName = prompt('Введите имя нового сотрудника:');
-            if (newName && newName.trim()) {
-                const newPassword = Math.floor(1000 + Math.random() * 9000).toString();
-                employees.push({ 
-                    name: newName.trim(), 
-                    password: newPassword 
-                });
-                localStorage.setItem('employees', JSON.stringify(employees));
-                updateEmployeeSelects();
-                renderEmployeeList();
-                alert(`Пароль для сотрудника: ${newPassword}`);
-            }
-        }
-
-        function updateEmployeeName(index, newName) {
-            const oldName = employees[index].name;
-            if (newName && newName.trim()) {
-                employees[index].name = newName.trim();
-                
-                shifts = shifts.map(shift => {
-                    if (shift.employee === oldName) {
-                        shift.employee = newName.trim();
-                    }
-                    return shift;
-                });
-                
-                localStorage.setItem('employees', JSON.stringify(employees));
-                localStorage.setItem('shifts', JSON.stringify(shifts));
-                updateEmployeeSelects();
-                renderEmployeeList();
-                loadAdminShifts();
-            }
-        }
-
-        function updateEmployeePassword(index, newPassword) {
-            if (newPassword && newPassword.trim()) {
-                employees[index].password = newPassword.trim();
-                localStorage.setItem('employees', JSON.stringify(employees));
-                renderEmployeeList();
-            }
-        }
-
         function copyEmployeePassword(index) {
             navigator.clipboard.writeText(employees[index].password).then(() => {
                 alert('Пароль скопирован в буфер обмена');
             });
-        }
-
-        function deleteEmployee(index) {
-            if (employees.length <= 1) {
-                alert('Должен быть хотя бы один сотрудник');
-                return;
-            }
-            
-            const employeeName = employees[index].name;
-            if (confirm(`Удалить сотрудника ${employeeName}? Все его смены также будут удалены.`)) {
-                employees.splice(index, 1);
-                shifts = shifts.filter(shift => shift.employee !== employeeName);
-                
-                localStorage.setItem('employees', JSON.stringify(employees));
-                localStorage.setItem('shifts', JSON.stringify(shifts));
-                updateEmployeeSelects();
-                renderEmployeeList();
-                loadAdminShifts();
-            }
-        }
-
-        function saveShift() {
-            if (!isAdminAuthorized) {
-                alert('Только администратор может сохранять смены!');
-                showPasswordModal();
-                return;
-            }
-
-            const employee = document.getElementById('employeeSelect').value;
-            const date = document.getElementById('shiftDate').value;
-            const startTime = document.getElementById('startTime').value;
-            const endTime = document.getElementById('endTime').value;
-            const hourlyRate = parseFloat(document.getElementById('hourlyRate').value);
-            
-            const taxi = parseFloat(document.getElementById('taxi').value) || 0;
-            const otherAllowances = parseFloat(document.getElementById('otherAllowances').value) || 0;
-            const fines = parseFloat(document.getElementById('fines').value) || 0;
-            const deductions = parseFloat(document.getElementById('deductions').value) || 0;
-            const meals = parseFloat(document.getElementById('meals').value) || 0;
-            const comment = document.getElementById('shiftComment').value;
-
-            if (!date) {
-                alert('Пожалуйста, выберите дату');
-                return;
-            }
-
-            const start = new Date(`2000-01-01T${startTime}`);
-            const end = new Date(`2000-01-01T${endTime}`);
-            const hoursWorked = (end - start) / (1000 * 60 * 60);
-
-            if (hoursWorked <= 0) {
-                alert('Время ухода должно быть позже времени прихода');
-                return;
-            }
-
-            const baseEarnings = hoursWorked * hourlyRate;
-            const totalAllowances = taxi + otherAllowances;
-            const totalDeductions = fines + deductions + meals;
-            const finalEarnings = baseEarnings + totalAllowances - totalDeductions;
-
-            const shift = {
-                id: Date.now(),
-                employee,
-                date,
-                startTime,
-                endTime,
-                hoursWorked: hoursWorked.toFixed(2),
-                hourlyRate,
-                taxi,
-                otherAllowances,
-                fines,
-                deductions,
-                meals,
-                comment: comment || '',
-                totalAllowances: totalAllowances.toFixed(2),
-                totalDeductions: totalDeductions.toFixed(2),
-                baseEarnings: baseEarnings.toFixed(2),
-                finalEarnings: finalEarnings.toFixed(2)
-            };
-
-            shifts.push(shift);
-            localStorage.setItem('shifts', JSON.stringify(shifts));
-
-            alert('Смена успешно сохранена!');
-            
-            document.getElementById('shiftDate').value = '';
-            document.getElementById('taxi').value = '0';
-            document.getElementById('otherAllowances').value = '0';
-            document.getElementById('fines').value = '0';
-            document.getElementById('deductions').value = '0';
-            document.getElementById('meals').value = '0';
-            document.getElementById('shiftComment').value = '';
-            
-            switchAdminTab('shifts');
-            loadAdminShifts();
         }
 
         function loadAdminShifts() {
@@ -1394,91 +1629,6 @@
 
         function closeEditModal() {
             document.getElementById('editShiftModal').classList.remove('active');
-        }
-
-        function updateShift() {
-            const id = parseInt(document.getElementById('editShiftId').value);
-            const index = shifts.findIndex(s => s.id === id);
-            
-            if (index === -1) return;
-
-            const employee = document.getElementById('editEmployeeSelect').value;
-            const date = document.getElementById('editShiftDate').value;
-            const startTime = document.getElementById('editStartTime').value;
-            const endTime = document.getElementById('editEndTime').value;
-            const hourlyRate = parseFloat(document.getElementById('editHourlyRate').value);
-            const taxi = parseFloat(document.getElementById('editTaxi').value) || 0;
-            const otherAllowances = parseFloat(document.getElementById('editOtherAllowances').value) || 0;
-            const fines = parseFloat(document.getElementById('editFines').value) || 0;
-            const deductions = parseFloat(document.getElementById('editDeductions').value) || 0;
-            const meals = parseFloat(document.getElementById('editMeals').value) || 0;
-            const comment = document.getElementById('editComment').value;
-
-            if (!date) {
-                alert('Пожалуйста, выберите дату');
-                return;
-            }
-
-            const start = new Date(`2000-01-01T${startTime}`);
-            const end = new Date(`2000-01-01T${endTime}`);
-            const hoursWorked = (end - start) / (1000 * 60 * 60);
-
-            if (hoursWorked <= 0) {
-                alert('Время ухода должно быть позже времени прихода');
-                return;
-            }
-
-            const baseEarnings = hoursWorked * hourlyRate;
-            const totalAllowances = taxi + otherAllowances;
-            const totalDeductions = fines + deductions + meals;
-            const finalEarnings = baseEarnings + totalAllowances - totalDeductions;
-
-            shifts[index] = {
-                ...shifts[index],
-                employee,
-                date,
-                startTime,
-                endTime,
-                hoursWorked: hoursWorked.toFixed(2),
-                hourlyRate,
-                taxi,
-                otherAllowances,
-                fines,
-                deductions,
-                meals,
-                comment: comment || '',
-                totalAllowances: totalAllowances.toFixed(2),
-                totalDeductions: totalDeductions.toFixed(2),
-                baseEarnings: baseEarnings.toFixed(2),
-                finalEarnings: finalEarnings.toFixed(2)
-            };
-
-            localStorage.setItem('shifts', JSON.stringify(shifts));
-            
-            alert('Смена успешно обновлена!');
-            closeEditModal();
-            loadAdminShifts();
-            
-            if (currentEmployee) {
-                loadEmployeeShifts();
-            }
-        }
-
-        function deleteShift() {
-            if (!confirm('Вы уверены, что хотите удалить эту смену?')) return;
-            
-            const id = parseInt(document.getElementById('editShiftId').value);
-            shifts = shifts.filter(s => s.id !== id);
-            
-            localStorage.setItem('shifts', JSON.stringify(shifts));
-            
-            alert('Смена удалена');
-            closeEditModal();
-            loadAdminShifts();
-            
-            if (currentEmployee) {
-                loadEmployeeShifts();
-            }
         }
 
         function resetAdminFilter() {
@@ -1711,53 +1861,56 @@
             return new Date(dateString).toLocaleDateString('ru-RU', options);
         }
 
-        // Инициализация
-        const today = new Date().toISOString().split('T')[0];
-        document.getElementById('shiftDate').value = today;
+        // Инициализация при загрузке страницы
+        document.addEventListener('DOMContentLoaded', function() {
+            // Устанавливаем сегодняшнюю дату
+            const today = new Date().toISOString().split('T')[0];
+            const shiftDate = document.getElementById('shiftDate');
+            if (shiftDate) shiftDate.value = today;
 
-        const firstDayOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
-        document.getElementById('dateFrom').value = firstDayOfMonth;
-        document.getElementById('dateTo').value = today;
+            // Устанавливаем период по умолчанию (текущий месяц)
+            const firstDayOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+            const dateFrom = document.getElementById('dateFrom');
+            const dateTo = document.getElementById('dateTo');
+            if (dateFrom) dateFrom.value = firstDayOfMonth;
+            if (dateTo) dateTo.value = today;
 
-        updateEmployeeSelects();
+            // Загружаем данные из Firebase
+            loadData();
 
-        // Обработка событий
-        document.getElementById('adminPasswordInput').addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') checkAdminPassword();
+            // Обработка нажатия Enter в полях пароля
+            document.getElementById('adminPasswordInput')?.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') checkAdminPassword();
+            });
+
+            document.getElementById('employeePasswordInput')?.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') checkEmployeePassword();
+            });
+
+            document.getElementById('employeePasswordInputMain')?.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') checkEmployeePasswordMain();
+            });
+
+            // Закрытие модальных окон по клику вне их
+            document.getElementById('adminPasswordModal')?.addEventListener('click', function(e) {
+                if (e.target === this) hideAdminPasswordModal();
+            });
+
+            document.getElementById('employeeLoginModal')?.addEventListener('click', function(e) {
+                if (e.target === this) hideEmployeeLoginModal();
+            });
+
+            document.getElementById('shiftModal')?.addEventListener('click', function(e) {
+                if (e.target === this) closeShiftModal();
+            });
+
+            document.getElementById('editShiftModal')?.addEventListener('click', function(e) {
+                if (e.target === this) closeEditModal();
+            });
+
+            // Для мобильных устройств
+            document.addEventListener('touchstart', function() {}, {passive: true});
         });
-
-        document.getElementById('employeePasswordInput').addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') checkEmployeePassword();
-        });
-
-        document.getElementById('employeePasswordInputMain').addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') checkEmployeePasswordMain();
-        });
-
-        // Закрытие модальных окон по клику вне их
-        document.getElementById('adminPasswordModal').addEventListener('click', function(e) {
-            if (e.target === this) hideAdminPasswordModal();
-        });
-
-        document.getElementById('employeeLoginModal').addEventListener('click', function(e) {
-            if (e.target === this) hideEmployeeLoginModal();
-        });
-
-        document.getElementById('shiftModal').addEventListener('click', function(e) {
-            if (e.target === this) closeShiftModal();
-        });
-
-        document.getElementById('editShiftModal').addEventListener('click', function(e) {
-            if (e.target === this) closeEditModal();
-        });
-
-        if (isAdminAuthorized) {
-            renderEmployeeList();
-            loadAdminShifts();
-        }
-
-        // Для мобильных устройств
-        document.addEventListener('touchstart', function() {}, {passive: true});
     </script>
 </body>
 </html>
