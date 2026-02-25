@@ -4,10 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
     <title>Учет рабочего времени</title>
-    <!-- Firebase SDK (правильные версии) -->
+    <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
     <style>
+        /* Все предыдущие стили остаются */
         * {
             margin: 0;
             padding: 0;
@@ -241,6 +242,14 @@
             width: auto;
         }
 
+        .btn.success {
+            background: linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%);
+        }
+
+        .btn.info {
+            background: linear-gradient(135deg, #2196F3 0%, #0D47A1 100%);
+        }
+
         .employee-header {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             padding: 20px;
@@ -331,6 +340,10 @@
             color: #f44336;
         }
 
+        .stat-value.warning {
+            color: #ff9800;
+        }
+
         .shifts-grid {
             display: grid;
             grid-template-columns: 1fr;
@@ -340,7 +353,7 @@
 
         @media (min-width: 480px) {
             .shifts-grid {
-                grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+                grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
             }
         }
 
@@ -468,6 +481,21 @@
             color: #c62828;
         }
 
+        .shift-badge.paid {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+
+        .shift-badge.unpaid {
+            background: #ffebee;
+            color: #c62828;
+        }
+
+        .shift-badge.partial {
+            background: #fff3e0;
+            color: #e65100;
+        }
+
         .comment-indicator {
             color: #ff9800;
             font-size: 0.85rem;
@@ -508,6 +536,10 @@
 
         .detail-value.negative {
             color: #f44336;
+        }
+
+        .detail-value.warning {
+            color: #ff9800;
         }
 
         .comment-box {
@@ -575,6 +607,83 @@
             .employee-item button {
                 width: 100%;
             }
+        }
+
+        /* Стили для выплат */
+        .payments-summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+            padding: 20px;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-radius: 15px;
+        }
+
+        .payment-card {
+            background: white;
+            padding: 15px;
+            border-radius: 12px;
+            text-align: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+
+        .payment-label {
+            font-size: 0.85rem;
+            color: #666;
+            margin-bottom: 8px;
+        }
+
+        .payment-value {
+            font-size: 1.8rem;
+            font-weight: bold;
+        }
+
+        .payment-value.positive {
+            color: #4caf50;
+        }
+
+        .payment-value.warning {
+            color: #ff9800;
+        }
+
+        .payment-value.negative {
+            color: #f44336;
+        }
+
+        .payment-history {
+            margin-top: 20px;
+        }
+
+        .payment-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            margin-bottom: 8px;
+        }
+
+        .payment-date {
+            font-weight: 500;
+            color: #333;
+        }
+
+        .payment-amount {
+            font-weight: bold;
+            color: #4caf50;
+        }
+
+        .payment-delete {
+            color: #f44336;
+            cursor: pointer;
+            padding: 5px 10px;
+            border-radius: 5px;
+        }
+
+        .payment-delete:hover {
+            background: #ffebee;
         }
 
         .admin-lock {
@@ -667,6 +776,34 @@
             </div>
         </div>
 
+        <!-- Модальное окно добавления выплаты -->
+        <div id="addPaymentModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3 id="paymentModalTitle">Добавить выплату</h3>
+                    <button class="modal-close" onclick="closePaymentModal()">×</button>
+                </div>
+                <div class="form-group">
+                    <label>Сотрудник</label>
+                    <select id="paymentEmployeeSelect"></select>
+                </div>
+                <div class="form-group">
+                    <label>Сумма выплаты (₽)</label>
+                    <input type="number" id="paymentAmount" min="1" value="1000">
+                </div>
+                <div class="form-group">
+                    <label>Дата выплаты</label>
+                    <input type="date" id="paymentDate">
+                </div>
+                <div class="form-group">
+                    <label>Комментарий (необязательно)</label>
+                    <input type="text" id="paymentComment" placeholder="Например: аванс, зарплата">
+                </div>
+                <button class="btn success" onclick="addPayment()">💰 Записать выплату</button>
+                <button class="btn secondary" onclick="closePaymentModal()">Отмена</button>
+            </div>
+        </div>
+
         <!-- Модальное окно редактирования смены -->
         <div id="editShiftModal" class="modal">
             <div class="modal-content">
@@ -754,6 +891,17 @@
             </div>
         </div>
 
+        <!-- Модальное окно деталей выплат сотрудника -->
+        <div id="employeePaymentsModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3 id="employeePaymentsTitle">История выплат</h3>
+                    <button class="modal-close" onclick="closeEmployeePaymentsModal()">×</button>
+                </div>
+                <div id="employeePaymentsDetails"></div>
+            </div>
+        </div>
+
         <!-- Секция входа сотрудника -->
         <div id="employeeLoginSection" class="employee-login-section active">
             <h2>👋 Добро пожаловать!</h2>
@@ -790,6 +938,22 @@
                 </div>
             </div>
 
+            <!-- Блок с выплатами для сотрудника -->
+            <div class="payments-summary">
+                <div class="payment-card">
+                    <div class="payment-label">💰 Заработано всего</div>
+                    <div class="payment-value positive" id="employeeTotalEarned">0 ₽</div>
+                </div>
+                <div class="payment-card">
+                    <div class="payment-label">💵 Получено</div>
+                    <div class="payment-value positive" id="employeeTotalPaid">0 ₽</div>
+                </div>
+                <div class="payment-card">
+                    <div class="payment-label">⏳ Осталось получить</div>
+                    <div class="payment-value warning" id="employeeRemaining">0 ₽</div>
+                </div>
+            </div>
+
             <div id="statsContainer" class="stats-cards"></div>
             <div id="shiftsGrid" class="shifts-grid"></div>
         </div>
@@ -799,9 +963,40 @@
             <h2 style="margin-bottom: 20px;">Панель администратора</h2>
             
             <div class="admin-tabs">
-                <button class="admin-tab active" onclick="switchAdminTab('employees')">Сотрудники</button>
-                <button class="admin-tab" onclick="switchAdminTab('shifts')">Все смены</button>
-                <button class="admin-tab" onclick="switchAdminTab('add')">Добавить смену</button>
+                <button class="admin-tab" onclick="switchAdminTab('payments')">💰 Выплаты</button>
+                <button class="admin-tab active" onclick="switchAdminTab('employees')">👥 Сотрудники</button>
+                <button class="admin-tab" onclick="switchAdminTab('shifts')">📅 Все смены</button>
+                <button class="admin-tab" onclick="switchAdminTab('add')">➕ Добавить смену</button>
+            </div>
+
+            <!-- Вкладка выплат -->
+            <div id="adminPaymentsTab" class="admin-tab-content">
+                <div class="payments-summary">
+                    <div class="payment-card">
+                        <div class="payment-label">💰 Всего заработано</div>
+                        <div class="payment-value positive" id="totalEarnedAll">0 ₽</div>
+                    </div>
+                    <div class="payment-card">
+                        <div class="payment-label">💵 Всего выплачено</div>
+                        <div class="payment-value positive" id="totalPaidAll">0 ₽</div>
+                    </div>
+                    <div class="payment-card">
+                        <div class="payment-label">⏳ Осталось выплатить</div>
+                        <div class="payment-value warning" id="totalRemainingAll">0 ₽</div>
+                    </div>
+                </div>
+
+                <div class="filter-controls" style="margin-bottom: 20px;">
+                    <div class="filter-group">
+                        <label>Сотрудник</label>
+                        <select id="paymentEmployeeFilter" onchange="loadPayments()">
+                            <option value="">Все сотрудники</option>
+                        </select>
+                    </div>
+                    <button class="btn success small" onclick="showAddPaymentModal()">➕ Добавить выплату</button>
+                </div>
+
+                <div id="paymentsList" class="payment-history"></div>
             </div>
 
             <!-- Вкладка управления сотрудниками -->
@@ -914,16 +1109,9 @@
 
     <script>
         // ============================================
-        // ⭐⭐⭐ СЮДА ВСТАВЬТЕ СВОИ ДАННЫЕ ИЗ FIREBASE ⭐⭐⭐
+        // ВАШИ НАСТРОЙКИ FIREBASE - ВСТАВЬТЕ СВОИ ДАННЫЕ!
         // ============================================
-        // Как получить эти данные:
-        // 1. Зайдите в Firebase Console
-        // 2. Нажмите на шестеренку → Project settings
-        // 3. Прокрутите вниз до "Your apps"
-        // 4. Скопируйте весь объект firebaseConfig
-        // ============================================
-        
-       const firebaseConfig = {
+        const firebaseConfig = {
 
   apiKey: "AIzaSyBJUQqeGHw5f8-oQVp7bmjSNiWFlGlOx8I",
 
@@ -941,6 +1129,7 @@
 
 };
 
+
         // Инициализация Firebase
         firebase.initializeApp(firebaseConfig);
         const db = firebase.firestore();
@@ -948,6 +1137,7 @@
         // Глобальные переменные
         let employees = [];
         let shifts = [];
+        let payments = [];
         let currentEmployee = null;
         let isAdminAuthorized = false;
 
@@ -990,6 +1180,159 @@
         }
 
         // ============================================
+        // ФУНКЦИИ ДЛЯ ВЫПЛАТ
+        // ============================================
+        function showAddPaymentModal() {
+            if (!isAdminAuthorized) {
+                alert('Только администратор может добавлять выплаты!');
+                showPasswordModal();
+                return;
+            }
+
+            document.getElementById('paymentEmployeeSelect').innerHTML = employees.map(emp => 
+                `<option value="${emp.name}">${emp.name}</option>`
+            ).join('');
+
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('paymentDate').value = today;
+            document.getElementById('paymentAmount').value = '1000';
+            document.getElementById('paymentComment').value = '';
+
+            document.getElementById('addPaymentModal').classList.add('active');
+        }
+
+        function closePaymentModal() {
+            document.getElementById('addPaymentModal').classList.remove('active');
+        }
+
+        async function addPayment() {
+            if (!isAdminAuthorized) {
+                alert('Только администратор может добавлять выплаты!');
+                return;
+            }
+
+            const employee = document.getElementById('paymentEmployeeSelect').value;
+            const amount = parseFloat(document.getElementById('paymentAmount').value);
+            const date = document.getElementById('paymentDate').value;
+            const comment = document.getElementById('paymentComment').value;
+
+            if (!employee || !amount || !date) {
+                alert('Заполните все поля!');
+                return;
+            }
+
+            if (amount <= 0) {
+                alert('Сумма должна быть больше 0');
+                return;
+            }
+
+            const payment = {
+                employee,
+                amount,
+                date,
+                comment: comment || 'Выплата',
+                createdAt: new Date().toISOString()
+            };
+
+            try {
+                const docRef = await db.collection('payments').add(payment);
+                payment.id = docRef.id;
+                payments.push(payment);
+                
+                alert('✅ Выплата успешно записана!');
+                closePaymentModal();
+                loadPayments();
+                
+                if (currentEmployee) {
+                    loadEmployeeShifts();
+                }
+            } catch (error) {
+                console.error("Ошибка при добавлении выплаты:", error);
+                alert("❌ Ошибка: " + error.message);
+            }
+        }
+
+        async function deletePayment(paymentId) {
+            if (!confirm('Удалить запись о выплате?')) return;
+
+            try {
+                await db.collection('payments').doc(paymentId).delete();
+                payments = payments.filter(p => p.id !== paymentId);
+                loadPayments();
+                
+                if (currentEmployee) {
+                    loadEmployeeShifts();
+                }
+            } catch (error) {
+                console.error("Ошибка при удалении выплаты:", error);
+                alert("❌ Ошибка: " + error.message);
+            }
+        }
+
+        function loadPayments() {
+            const employeeFilter = document.getElementById('paymentEmployeeFilter')?.value || '';
+            
+            let filteredPayments = [...payments];
+            if (employeeFilter) {
+                filteredPayments = filteredPayments.filter(p => p.employee === employeeFilter);
+            }
+
+            filteredPayments.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+            const paymentsList = document.getElementById('paymentsList');
+            if (!paymentsList) return;
+
+            if (filteredPayments.length === 0) {
+                paymentsList.innerHTML = '<div class="no-data">📅 Нет выплат за выбранный период</div>';
+                return;
+            }
+
+            paymentsList.innerHTML = filteredPayments.map(payment => `
+                <div class="payment-item">
+                    <div>
+                        <div class="payment-date">${formatDate(payment.date)}</div>
+                        <div style="font-size: 0.9rem; color: #666;">${payment.employee} - ${payment.comment}</div>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span class="payment-amount">${payment.amount} ₽</span>
+                        <span class="payment-delete" onclick="deletePayment('${payment.id}')">🗑️</span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function showEmployeePayments(employeeName) {
+            const employeePayments = payments.filter(p => p.employee === employeeName);
+            employeePayments.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+            const modal = document.getElementById('employeePaymentsModal');
+            const title = document.getElementById('employeePaymentsTitle');
+            const details = document.getElementById('employeePaymentsDetails');
+
+            title.textContent = `История выплат: ${employeeName}`;
+
+            if (employeePayments.length === 0) {
+                details.innerHTML = '<div class="no-data">📅 Нет выплат</div>';
+            } else {
+                details.innerHTML = employeePayments.map(payment => `
+                    <div class="payment-item">
+                        <div>
+                            <div class="payment-date">${formatDate(payment.date)}</div>
+                            <div style="font-size: 0.9rem; color: #666;">${payment.comment}</div>
+                        </div>
+                        <span class="payment-amount">${payment.amount} ₽</span>
+                    </div>
+                `).join('');
+            }
+
+            modal.classList.add('active');
+        }
+
+        function closeEmployeePaymentsModal() {
+            document.getElementById('employeePaymentsModal').classList.remove('active');
+        }
+
+        // ============================================
         // ФУНКЦИИ ВХОДА
         // ============================================
         function checkAdminPassword() {
@@ -1003,6 +1346,8 @@
                 updateEmployeeSelects();
                 renderEmployeeList();
                 loadAdminShifts();
+                loadPayments();
+                updateTotals();
                 switchToAdmin();
             } else {
                 alert('Неверный пароль!');
@@ -1102,11 +1447,16 @@
             document.querySelectorAll('.admin-tab').forEach(btn => btn.classList.remove('active'));
             event.target.classList.add('active');
             
+            document.getElementById('adminPaymentsTab').classList.remove('active');
             document.getElementById('adminEmployeesTab').classList.remove('active');
             document.getElementById('adminShiftsTab').classList.remove('active');
             document.getElementById('adminAddTab').classList.remove('active');
             
-            if (tab === 'employees') {
+            if (tab === 'payments') {
+                document.getElementById('adminPaymentsTab').classList.add('active');
+                loadPayments();
+                updateTotals();
+            } else if (tab === 'employees') {
                 document.getElementById('adminEmployeesTab').classList.add('active');
             } else if (tab === 'shifts') {
                 document.getElementById('adminShiftsTab').classList.add('active');
@@ -1118,14 +1468,14 @@
         }
 
         function updateEmployeeSelects() {
-            const selects = ['employeeSelect', 'employeeLoginSelect', 'employeeLoginSelectMain', 'adminEmployeeFilter', 'editEmployeeSelect'];
+            const selects = ['employeeSelect', 'employeeLoginSelect', 'employeeLoginSelectMain', 'adminEmployeeFilter', 'editEmployeeSelect', 'paymentEmployeeFilter'];
             
             const options = employees.map(emp => `<option value="${emp.name}">${emp.name}</option>`).join('');
             
             selects.forEach(id => {
                 const el = document.getElementById(id);
                 if (el) {
-                    if (id === 'adminEmployeeFilter') {
+                    if (id === 'adminEmployeeFilter' || id === 'paymentEmployeeFilter') {
                         el.innerHTML = '<option value="">Все сотрудники</option>' + options;
                     } else {
                         el.innerHTML = options;
@@ -1142,14 +1492,31 @@
             const container = document.getElementById('employeesContainer');
             if (!container) return;
             
-            container.innerHTML = employees.map((emp, index) => `
-                <div class="employee-item">
-                    <input type="text" value="${emp.name}" placeholder="Имя" onchange="updateEmployeeName(${index}, this.value)">
-                    <input type="text" value="${emp.password}" placeholder="Пароль" onchange="updateEmployeePassword(${index}, this.value)">
-                    <button class="btn secondary small" onclick="copyEmployeePassword(${index})">📋</button>
-                    <button class="btn danger small" onclick="deleteEmployee(${index})">❌</button>
+            container.innerHTML = employees.map((emp, index) => {
+                const employeePayments = payments.filter(p => p.employee === emp.name);
+                const totalPaid = employeePayments.reduce((sum, p) => sum + p.amount, 0);
+                const employeeShifts = shifts.filter(s => s.employee === emp.name);
+                const totalEarned = employeeShifts.reduce((sum, s) => sum + parseFloat(s.finalEarnings), 0);
+                const remaining = totalEarned - totalPaid;
+                
+                return `
+                <div style="background: white; border-radius: 10px; padding: 10px; margin-bottom: 10px;">
+                    <div class="employee-item">
+                        <input type="text" value="${emp.name}" placeholder="Имя" onchange="updateEmployeeName(${index}, this.value)">
+                        <input type="text" value="${emp.password}" placeholder="Пароль" onchange="updateEmployeePassword(${index}, this.value)">
+                        <button class="btn secondary small" onclick="copyEmployeePassword(${index})">📋</button>
+                        <button class="btn danger small" onclick="deleteEmployee(${index})">❌</button>
+                    </div>
+                    <div style="display: flex; gap: 10px; margin-top: 5px; font-size: 0.85rem;">
+                        <span style="color: #4caf50;">💰 ${totalEarned.toFixed(0)} ₽</span>
+                        <span style="color: #2196F3;">💵 ${totalPaid.toFixed(0)} ₽</span>
+                        <span style="color: ${remaining > 0 ? '#ff9800' : '#4caf50'};">
+                            ⏳ ${remaining.toFixed(0)} ₽
+                        </span>
+                        <button class="btn info small" onclick="showEmployeePayments('${emp.name}')">📋 История</button>
+                    </div>
                 </div>
-            `).join('');
+            `}).join('');
         }
 
         function copyEmployeePassword(index) {
@@ -1196,8 +1563,16 @@
                     shifts.push({ id: doc.id, ...doc.data() });
                 });
 
+                // Загружаем выплаты
+                const paymentsSnapshot = await db.collection('payments').get();
+                payments = [];
+                paymentsSnapshot.forEach(doc => {
+                    payments.push({ id: doc.id, ...doc.data() });
+                });
+
                 console.log("Загружено сотрудников:", employees.length);
                 console.log("Загружено смен:", shifts.length);
+                console.log("Загружено выплат:", payments.length);
 
                 // Обновляем интерфейс
                 updateEmployeeSelects();
@@ -1205,6 +1580,8 @@
                 if (isAdminAuthorized) {
                     renderEmployeeList();
                     loadAdminShifts();
+                    loadPayments();
+                    updateTotals();
                     updateAdminUI();
                 }
                 
@@ -1212,6 +1589,21 @@
                 console.error("Ошибка загрузки из Firebase:", error);
                 alert("Ошибка подключения к Firebase. Проверьте интернет и настройки.");
             }
+        }
+
+        // Обновление общей статистики выплат
+        function updateTotals() {
+            const totalEarned = shifts.reduce((sum, s) => sum + parseFloat(s.finalEarnings), 0);
+            const totalPaid = payments.reduce((sum, p) => sum + p.amount, 0);
+            const totalRemaining = totalEarned - totalPaid;
+
+            const totalEarnedEl = document.getElementById('totalEarnedAll');
+            const totalPaidEl = document.getElementById('totalPaidAll');
+            const totalRemainingEl = document.getElementById('totalRemainingAll');
+
+            if (totalEarnedEl) totalEarnedEl.textContent = totalEarned.toFixed(0) + ' ₽';
+            if (totalPaidEl) totalPaidEl.textContent = totalPaid.toFixed(0) + ' ₽';
+            if (totalRemainingEl) totalRemainingEl.textContent = totalRemaining.toFixed(0) + ' ₽';
         }
 
         // Добавление нового сотрудника
@@ -1224,14 +1616,11 @@
                 try {
                     console.log("Добавляем сотрудника:", newEmployee);
                     
-                    // Сохраняем в Firebase
                     const docRef = await db.collection('employees').add(newEmployee);
                     console.log("Успешно! ID:", docRef.id);
                     
-                    // Добавляем в локальный массив
                     employees.push({ id: docRef.id, ...newEmployee });
                     
-                    // Обновляем интерфейс
                     updateEmployeeSelects();
                     renderEmployeeList();
                     
@@ -1239,7 +1628,7 @@
                     
                 } catch (error) {
                     console.error("❌ Ошибка при добавлении:", error);
-                    alert(`❌ Ошибка: ${error.message}\n\nПроверьте правила Firebase!`);
+                    alert(`❌ Ошибка: ${error.message}`);
                 }
             }
         }
@@ -1264,10 +1653,19 @@
                             shift.employee = newName.trim();
                         }
                     }
+
+                    const paymentsToUpdate = payments.filter(p => p.employee === oldName);
+                    for (let payment of paymentsToUpdate) {
+                        if (payment.id) {
+                            await db.collection('payments').doc(payment.id).update({ employee: newName.trim() });
+                            payment.employee = newName.trim();
+                        }
+                    }
                     
                     updateEmployeeSelects();
                     renderEmployeeList();
                     loadAdminShifts();
+                    loadPayments();
                     
                 } catch (error) {
                     console.error("Ошибка обновления имени:", error);
@@ -1303,7 +1701,7 @@
             const employeeName = employees[index].name;
             const employeeId = employees[index].id;
             
-            if (confirm(`Удалить сотрудника ${employeeName}? Все его смены также будут удалены.`)) {
+            if (confirm(`Удалить сотрудника ${employeeName}? Все его смены и выплаты также будут удалены.`)) {
                 try {
                     if (employeeId) {
                         await db.collection('employees').doc(employeeId).delete();
@@ -1315,13 +1713,23 @@
                             await db.collection('shifts').doc(shift.id).delete();
                         }
                     }
+
+                    const paymentsToDelete = payments.filter(p => p.employee === employeeName);
+                    for (let payment of paymentsToDelete) {
+                        if (payment.id) {
+                            await db.collection('payments').doc(payment.id).delete();
+                        }
+                    }
                     
                     employees.splice(index, 1);
                     shifts = shifts.filter(shift => shift.employee !== employeeName);
+                    payments = payments.filter(p => p.employee !== employeeName);
                     
                     updateEmployeeSelects();
                     renderEmployeeList();
                     loadAdminShifts();
+                    loadPayments();
+                    updateTotals();
                     
                 } catch (error) {
                     console.error("Ошибка удаления сотрудника:", error);
@@ -1406,6 +1814,10 @@
                 document.getElementById('shiftComment').value = '';
                 
                 loadAdminShifts();
+                updateTotals();
+                if (currentEmployee) {
+                    loadEmployeeShifts();
+                }
                 
             } catch (error) {
                 console.error("Ошибка сохранения:", error);
@@ -1478,6 +1890,7 @@
                 alert('Смена успешно обновлена!');
                 closeEditModal();
                 loadAdminShifts();
+                updateTotals();
                 
                 if (currentEmployee) {
                     loadEmployeeShifts();
@@ -1501,6 +1914,7 @@
                 alert('Смена удалена');
                 closeEditModal();
                 loadAdminShifts();
+                updateTotals();
                 
                 if (currentEmployee) {
                     loadEmployeeShifts();
@@ -1647,12 +2061,23 @@
 
             filteredShifts.sort((a, b) => new Date(b.date) - new Date(a.date));
 
+            // Подсчет статистики по сменам
             const totalHours = filteredShifts.reduce((sum, shift) => sum + parseFloat(shift.hoursWorked), 0);
             const totalBaseEarnings = filteredShifts.reduce((sum, shift) => sum + parseFloat(shift.baseEarnings || shift.totalEarnings || 0), 0);
             const totalTaxi = filteredShifts.reduce((sum, shift) => sum + parseFloat(shift.taxi || 0), 0);
             const totalOtherAllowances = filteredShifts.reduce((sum, shift) => sum + parseFloat(shift.otherAllowances || 0), 0);
             const totalDeductions = filteredShifts.reduce((sum, shift) => sum + parseFloat(shift.totalDeductions || 0), 0);
             const totalFinal = filteredShifts.reduce((sum, shift) => sum + parseFloat(shift.finalEarnings), 0);
+
+            // Подсчет выплат
+            const employeePayments = payments.filter(p => p.employee === currentEmployee.name);
+            const totalPaid = employeePayments.reduce((sum, p) => sum + p.amount, 0);
+            const remaining = totalFinal - totalPaid;
+
+            // Обновляем блок с выплатами
+            document.getElementById('employeeTotalEarned').textContent = totalFinal.toFixed(0) + ' ₽';
+            document.getElementById('employeeTotalPaid').textContent = totalPaid.toFixed(0) + ' ₽';
+            document.getElementById('employeeRemaining').textContent = remaining.toFixed(0) + ' ₽';
 
             document.getElementById('statsContainer').innerHTML = `
                 <div class="stat-card">
@@ -1892,6 +2317,14 @@
 
         document.getElementById('editShiftModal')?.addEventListener('click', function(e) {
             if (e.target === this) closeEditModal();
+        });
+
+        document.getElementById('addPaymentModal')?.addEventListener('click', function(e) {
+            if (e.target === this) closePaymentModal();
+        });
+
+        document.getElementById('employeePaymentsModal')?.addEventListener('click', function(e) {
+            if (e.target === this) closeEmployeePaymentsModal();
         });
     </script>
 </body>
