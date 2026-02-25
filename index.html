@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
     <title>Учет рабочего времени</title>
-    <!-- ПРАВИЛЬНЫЕ ПОДКЛЮЧЕНИЯ FIREBASE -->
+    <!-- Подключаем Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
     <style>
@@ -893,7 +893,7 @@
         // ============================================
         // ВАШИ НАСТРОЙКИ FIREBASE - ВСТАВЬТЕ СВОИ ДАННЫЕ!
         // ============================================
-        const firebaseConfig = {
+         const firebaseConfig = {
             apiKey: "AIzaSyBxL9Xx9Xx9Xx9Xx9Xx9Xx9Xx9Xx9Xx9Xx",
             authDomain: "worktime-12345.firebaseapp.com",
             projectId: "worktime-12345",
@@ -1183,10 +1183,10 @@
                     employees.push({ id: docRef.id, ...newEmployee });
                     updateEmployeeSelects();
                     renderEmployeeList();
-                    alert(`Пароль для сотрудника: ${newPassword}`);
+                    alert(`✅ Сотрудник "${newName}" добавлен!\nПароль: ${newPassword}`);
                 } catch (error) {
                     console.error("Ошибка добавления сотрудника:", error);
-                    alert("Ошибка при добавлении сотрудника");
+                    alert("❌ Ошибка при добавлении сотрудника: " + error.message);
                 }
             }
         }
